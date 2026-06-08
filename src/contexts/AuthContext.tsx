@@ -44,8 +44,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTokenState(storedToken);
         setUserState(JSON.parse(storedUser));
         try {
+          const profile = await authService.getProfile();
+          setUserState(profile);
+          await setUser(JSON.stringify(profile));
           await authService.syncTime();
-        } catch {}
+        } catch {
+          await removeToken();
+          await removeUser();
+          setTokenState(null);
+          setUserState(null);
+        }
       }
     } catch {
     } finally {
