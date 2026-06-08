@@ -1,2 +1,2 @@
-import DeviceSetupScreen from "@/src/screens/DeviceSetUpScreen";
+import DeviceSetupScreen from "@/src/screens/DeviceSetupScreen";
 export default DeviceSetupScreen;

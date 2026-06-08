@@ -4,11 +4,7 @@ const TOKEN_KEY = "kujikisa_token";
 const USER_KEY = "kujikisa_user";
 const DEVICE_URL_KEY = "kujikisa_device_url";
 
-let SecureStore: any = null;
-
-try {
-  SecureStore = require("expo-secure-store");
-} catch {}
+import * as SecureStore from "expo-secure-store";
 
 export async function getToken(): Promise<string | null> {
   if (Platform.OS === "web") return localStorage.getItem(TOKEN_KEY);

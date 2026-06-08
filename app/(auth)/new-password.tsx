@@ -1,3 +1,3 @@
-import NewPasswordScreen from "@/src/screens/NewPassowordScreen";
+import NewPasswordScreen from "@/src/screens/NewPasswordScreen";
 
 export default NewPasswordScreen;

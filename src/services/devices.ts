@@ -4,7 +4,6 @@ import type {
   PairDeviceRequest,
   RenameDeviceRequest,
   LocalSchedule,
-  DeviceStatus,
 } from "@/src/types";
 
 export function getDevices(): Promise<Device[]> {
