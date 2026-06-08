@@ -20,16 +20,20 @@ export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSendCode = () => {
-    if (!email) return;
+    setError("");
+    if (!email.trim()) {
+      setError("Preencha o email.");
+      return;
+    }
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
       setSent(true);
       router.push("/(auth)/verify-code");
     }, 1500);
-    setEmail("");
   };
 
   const inputBorder = isIOS
@@ -74,6 +78,12 @@ export default function ForgotPasswordScreen() {
             </Text>
           </View>
 
+          {error ? (
+            <View style={{ backgroundColor: colors.errorBg, borderRadius: radius.input, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: colors.error }}>
+              <Text style={{ fontSize: 13, color: colors.error, fontWeight: "500", textAlign: "center" }}>{error}</Text>
+            </View>
+          ) : null}
+
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary, marginBottom: 6 }}>
               E-mail
@@ -104,10 +114,10 @@ export default function ForgotPasswordScreen() {
 
           <View style={{ marginTop: "auto", paddingBottom: 32, paddingTop: 24 }}>
             <TouchableOpacity
-              style={{ width: "100%", backgroundColor: (!email || loading || sent) ? colors.primaryTransparent : colors.primary, paddingVertical: 16, borderRadius: radius.button, alignItems: "center", justifyContent: "center", ...((!email || loading || sent) ? {} : shadows.button) }}
+              style={{ width: "100%", backgroundColor: (loading || sent) ? colors.primaryTransparent : colors.primary, paddingVertical: 16, borderRadius: radius.button, alignItems: "center", justifyContent: "center", ...((loading || sent) ? {} : shadows.button) }}
               onPress={handleSendCode}
               activeOpacity={0.85}
-              disabled={!email || loading || sent}
+              disabled={loading || sent}
             >
               {loading ? (
                 <View style={{ flexDirection: "row", alignItems: "center" }}>

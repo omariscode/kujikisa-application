@@ -4,8 +4,6 @@ import React, { useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StatusBar, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAppTheme } from "@/src/theme/ThemeContext";
 import { isIOS } from "@/src/theme/platform";
-import { getApiError } from "@/src/services/client";
-import { changePassword } from "@/src/services/auth";
 
 function getPasswordStrength(password: string, colors: any) {
   if (password.length === 0) return { level: 0, text: "", color: colors.textMuted };
@@ -17,10 +15,8 @@ function getPasswordStrength(password: string, colors: any) {
 
 export default function NewPasswordScreen() {
   const { colors, backgrounds, borders, shadows, radius, isDark } = useAppTheme();
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -30,21 +26,23 @@ export default function NewPasswordScreen() {
   const strength = getPasswordStrength(newPassword, colors);
   const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
   const passwordsMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
-  const canSubmit = currentPassword && newPassword.length >= 6 && passwordsMatch && !loading;
 
   const handleSave = async () => {
-    if (!canSubmit) return;
-    setLoading(true);
     setError("");
-    try {
-      await changePassword({ current_password: currentPassword, new_password: newPassword });
-      setSaved(true);
-      setTimeout(() => router.push("/(auth)/login"), 1500);
-    } catch (err) {
-      setError(getApiError(err));
-    } finally {
-      setLoading(false);
+    if (newPassword.length < 6) {
+      setError("A nova senha deve ter pelo menos 6 caracteres.");
+      return;
     }
+    if (newPassword !== confirmPassword) {
+      setError("As senhas não coincidem.");
+      return;
+    }
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      setSaved(true);
+      setTimeout(() => router.replace("/(auth)/login"), 1500);
+    }, 1000);
   };
 
   const inputBorder = isIOS ? (isDark ? "rgba(255,255,255,0.15)" : "rgba(60,60,67,0.15)") : "rgba(0,94,164,0.2)";
@@ -76,16 +74,6 @@ export default function NewPasswordScreen() {
             ) : null}
 
             <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary, marginBottom: 6 }}>Senha Atual</Text>
-              <View style={{ flexDirection: "row", alignItems: "center", borderRadius: radius.input, borderWidth: 1, borderColor: inputBorder, backgroundColor: inputBg }}>
-                <TextInput style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 12, color: colors.textPrimary, fontSize: 16 }} placeholder="Digite sua senha atual" placeholderTextColor={colors.textTertiary} secureTextEntry={!showCurrent} value={currentPassword} onChangeText={setCurrentPassword} editable={!saved} />
-                <TouchableOpacity style={{ paddingHorizontal: 12 }} onPress={() => setShowCurrent(!showCurrent)}>
-                  <FontAwesome name={showCurrent ? "eye-slash" : "eye"} size={18} color={colors.textTertiary} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={{ marginBottom: 20 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary, marginBottom: 6 }}>Nova Senha</Text>
               <View style={{ flexDirection: "row", alignItems: "center", borderRadius: radius.input, borderWidth: 1, borderColor: inputBorder, backgroundColor: inputBg }}>
                 <TextInput style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 12, color: colors.textPrimary, fontSize: 16 }} placeholder="Digite sua nova senha" placeholderTextColor={colors.textTertiary} secureTextEntry={!showNew} value={newPassword} onChangeText={setNewPassword} editable={!saved} />
@@ -106,7 +94,7 @@ export default function NewPasswordScreen() {
             </View>
 
             <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary, marginBottom: 6 }}>Confirmar Nova Senha</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary, marginBottom: 6 }}>Confirmar Senha</Text>
               <View style={{ flexDirection: "row", alignItems: "center", borderRadius: radius.input, borderWidth: 1, borderColor: passwordsMismatch ? colors.error : passwordsMatch ? colors.primary : inputBorder, backgroundColor: inputBg }}>
                 <TextInput style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 12, color: colors.textPrimary, fontSize: 16 }} placeholder="Repita sua nova senha" placeholderTextColor={colors.textTertiary} secureTextEntry={!showConfirm} value={confirmPassword} onChangeText={setConfirmPassword} editable={!saved} />
                 <TouchableOpacity style={{ paddingHorizontal: 12 }} onPress={() => setShowConfirm(!showConfirm)}>
@@ -124,9 +112,9 @@ export default function NewPasswordScreen() {
             )}
 
             <TouchableOpacity
-              style={{ width: "100%", backgroundColor: (!canSubmit || saved) ? colors.primaryTransparent : colors.primary, paddingVertical: 16, borderRadius: radius.button, alignItems: "center", justifyContent: "center", marginTop: 8, ...((!canSubmit || saved) ? {} : shadows.button) }}
+              style={{ width: "100%", backgroundColor: (loading || saved) ? colors.primaryTransparent : colors.primary, paddingVertical: 16, borderRadius: radius.button, alignItems: "center", justifyContent: "center", marginTop: 8, ...((loading || saved) ? {} : shadows.button) }}
               onPress={handleSave}
-              disabled={!canSubmit || saved}
+              disabled={loading || saved}
             >
               {loading ? (
                 <View style={{ flexDirection: "row", alignItems: "center" }}>

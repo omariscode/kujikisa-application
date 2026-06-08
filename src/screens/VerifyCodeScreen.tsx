@@ -22,6 +22,7 @@ export default function VerifyCodeScreen() {
   const [loading, setLoading] = useState(false);
   const [timer, setTimer] = useState(60);
   const [canResend, setCanResend] = useState(false);
+  const [error, setError] = useState("");
 
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
@@ -66,12 +67,15 @@ export default function VerifyCodeScreen() {
   };
 
   const handleVerify = () => {
+    setError("");
     const fullCode = code.join("");
-    if (fullCode.length < 6) return;
+    if (fullCode.length < 6) {
+      setError("Insira o código completo de 6 dígitos.");
+      return;
+    }
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      console.log("Código verificado:", fullCode);
       router.replace("/(auth)/new-password");
     }, 1500);
   };
@@ -111,10 +115,16 @@ export default function VerifyCodeScreen() {
         </View>
 
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 20 }}>
-          <View style={{ width: "100%", maxWidth: 400, backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 24, alignItems: "center", borderWidth: 1, borderColor: borders.card, ...shadows.card }}>
+            <View style={{ width: "100%", maxWidth: 400, backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 24, alignItems: "center", borderWidth: 1, borderColor: borders.card, ...shadows.card }}>
             <View style={{ width: 80, height: 80, borderRadius: 50, backgroundColor: colors.primaryGlass, alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
               <Text style={{ fontSize: 36 }}>📧</Text>
             </View>
+
+            {error ? (
+              <View style={{ width: "100%", backgroundColor: colors.errorBg, borderRadius: radius.input, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: colors.error }}>
+                <Text style={{ fontSize: 13, color: colors.error, fontWeight: "500", textAlign: "center" }}>{error}</Text>
+              </View>
+            ) : null}
             <Text style={{ fontSize: 16, color: colors.textSecondary, textAlign: "center", lineHeight: 24, marginBottom: 32 }}>
               Enviamos um código de 6 dígitos para o seu e-mail. Por favor, insira-o abaixo para continuar.
             </Text>
@@ -155,9 +165,9 @@ export default function VerifyCodeScreen() {
             </View>
 
             <TouchableOpacity
-              style={{ width: "100%", backgroundColor: (!isComplete || loading) ? colors.primaryTransparent : colors.primary, paddingVertical: 16, borderRadius: radius.button, alignItems: "center", justifyContent: "center", ...((!isComplete || loading) ? {} : shadows.button) }}
+              style={{ width: "100%", backgroundColor: loading ? colors.primaryTransparent : colors.primary, paddingVertical: 16, borderRadius: radius.button, alignItems: "center", justifyContent: "center", ...(loading ? {} : shadows.button) }}
               onPress={handleVerify}
-              disabled={!isComplete || loading}
+              disabled={loading}
             >
               {loading ? (
                 <View style={{ flexDirection: "row", alignItems: "center" }}>

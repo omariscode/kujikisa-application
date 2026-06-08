@@ -7,6 +7,7 @@ import { isIOS } from "@/src/theme/platform";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { getApiError } from "@/src/services/client";
 import * as authService from "@/src/services/auth";
+import { setOnboardingComplete } from "@/src/services/storage";
 
 function getPasswordStrength(password: string, colors: any) {
   if (password.length === 0) return { level: 0, text: "", color: colors.textMuted };
@@ -34,12 +35,28 @@ export default function RegisterScreen() {
   const canSubmit = fullName.trim() && email && password.length >= 6 && passwordsMatch && !loading;
 
   const handleRegister = async () => {
-    if (!canSubmit) return;
-    setLoading(true);
     setError("");
+    if (!fullName.trim()) {
+      setError("Preencha o nome completo.");
+      return;
+    }
+    if (!email.trim()) {
+      setError("Preencha o email.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("A senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("As senhas não coincidem.");
+      return;
+    }
+    setLoading(true);
     try {
       await authService.register({ full_name: fullName, email, password });
       await login({ email, password });
+      await setOnboardingComplete();
     } catch (err) {
       setError(getApiError(err));
     } finally {
@@ -123,10 +140,10 @@ export default function RegisterScreen() {
           </View>
 
           <TouchableOpacity
-            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", backgroundColor: canSubmit ? colors.primary : colors.primaryTransparent, paddingVertical: 14, borderRadius: radius.button, marginTop: 8, ...(canSubmit ? shadows.button : {}) }}
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", backgroundColor: loading ? colors.primaryTransparent : colors.primary, paddingVertical: 14, borderRadius: radius.button, marginTop: 8, ...(loading ? {} : shadows.button) }}
             onPress={handleRegister}
             activeOpacity={0.85}
-            disabled={!canSubmit}
+            disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" size="small" />

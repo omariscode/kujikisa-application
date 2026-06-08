@@ -31,9 +31,12 @@ export default function LoginScreen() {
   const [error, setError] = useState("");
 
   const handleLogin = async () => {
-    if (!email || !password) return;
-    setLoading(true);
     setError("");
+    if (!email.trim() || !password) {
+      setError("Preencha todos os campos.");
+      return;
+    }
+    setLoading(true);
     try {
       await login({ email, password });
     } catch (err) {
@@ -139,9 +142,9 @@ export default function LoginScreen() {
             </View>
 
             <TouchableOpacity
-              style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", backgroundColor: (!email || !password || loading) ? colors.primaryTransparent : colors.primary, paddingVertical: 14, borderRadius: radius.button, marginBottom: 16, ...((!email || !password || loading) ? {} : shadows.button) }}
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", backgroundColor: loading ? colors.primaryTransparent : colors.primary, paddingVertical: 14, borderRadius: radius.button, marginBottom: 16, ...(loading ? {} : shadows.button) }}
               onPress={handleLogin}
-              disabled={!email || !password || loading}
+              disabled={loading}
             >
               {loading ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
