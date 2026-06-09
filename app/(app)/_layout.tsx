@@ -44,6 +44,7 @@ export default function AppLayout() {
         <Stack.Screen name="notification" />
         <Stack.Screen name="review-prescription" />
         <Stack.Screen name="device-setup" />
+        <Stack.Screen name="prescription-detail" />
       </Stack>
     </View>
   );

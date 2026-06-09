@@ -1,13 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { ActivityIndicator, SafeAreaView, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAppTheme } from "@/src/theme/ThemeContext";
 import { isIOS } from "@/src/theme/platform";
-import { getDevices } from "@/src/services/devices";
-import { createPrescription, getPrescriptions } from "@/src/services/prescriptions";
+import { usePrescriptions, useCreatePrescription } from "@/src/hooks/useApi";
 import { getApiError } from "@/src/services/client";
-import type { Device, CreatePrescriptionRequest, Prescription as PrescriptionType } from "@/src/types";
+import type { CreatePrescriptionRequest } from "@/src/types";
 
 const Frequencies = ["1x ao dia", "2x ao dia", "3x ao dia"];
 
@@ -80,37 +79,15 @@ export default function ManualPrescriptionScreen() {
   const [loadingSave, setLoadingSave] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [openFreqIndex, setOpenFreqIndex] = useState<number | null>(null);
-  const [device, setDevice] = useState<Device | null>(null);
-  const [occupiedSlots, setOccupiedSlots] = useState<number[]>([]);
 
   const todayStr = new Date().toISOString().split("T")[0];
   const defaultEnd = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
   const [startDate, setStartDate] = useState(todayStr);
   const [endDate, setEndDate] = useState(defaultEnd);
-  const [activePrescription, setActivePrescription] = useState<PrescriptionType | null>(null);
-  const [loadingActiveCheck, setLoadingActiveCheck] = useState(true);
-
-  useEffect(() => {
-    loadDevice();
-    checkActivePrescription();
-  }, []);
-
-  async function checkActivePrescription() {
-    try {
-      const res = await getPrescriptions();
-      const active = (res.results || []).find((p) => p.is_active);
-      setActivePrescription(active || null);
-    } catch {} finally {
-      setLoadingActiveCheck(false);
-    }
-  }
-
-  async function loadDevice() {
-    try {
-      const devices = await getDevices();
-      if (devices.length > 0) setDevice(devices[0]);
-    } catch {}
-  }
+  const { data: prescRes, isLoading: prescLoading } = usePrescriptions();
+  const activePrescription = (prescRes?.results ?? []).find((p) => p.is_active) ?? null;
+  const loadingActiveCheck = prescLoading;
+  const createMutation = useCreatePrescription();
 
   const updatePrescription = (index: number, field: keyof Prescription, value: any) => {
     const updated = [...prescriptions];
@@ -160,7 +137,7 @@ export default function ManualPrescriptionScreen() {
     setLoadingSave(true);
     setSaveError("");
     try {
-      await createPrescription(payload);
+      await createMutation.mutateAsync(payload);
       router.back();
     } catch (err) {
       setSaveError(getApiError(err));

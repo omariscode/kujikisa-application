@@ -1,14 +1,17 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import React, { useCallback, useMemo } from "react";
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from "react-native";
 import { useAppTheme } from "../theme/ThemeContext";
-import { getEvents } from "@/src/services/events";
-import { getPrescriptions } from "@/src/services/prescriptions";
+import { useEvents, usePrescriptions } from "@/src/hooks/useApi";
+import { useFocusEffect, router } from "expo-router";
 import type { MedicationEvent, Prescription } from "@/src/types";
 
 function PrescriptionCard({ prescription, colors, backgrounds, borders, shadows, radius }: { prescription: Prescription; colors: any; backgrounds: any; borders: any; shadows: any; radius: any }) {
   const isActive = prescription.is_active;
   return (
-    <View style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 16, gap: 10, borderWidth: 1, borderColor: isActive ? colors.primary : borders.card, ...shadows.card }}>
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={() => router.push(`/(app)/prescription-detail?id=${prescription.id}`)}
+      style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 16, gap: 10, borderWidth: 1, borderColor: isActive ? colors.primary : borders.card, ...shadows.card }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <Text style={{ fontSize: 15, fontWeight: "700", color: colors.textPrimary }}>Prescrição #{prescription.id}</Text>
         <View style={{ backgroundColor: isActive ? colors.successBg : colors.border, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 50 }}>
@@ -31,7 +34,7 @@ function PrescriptionCard({ prescription, colors, backgrounds, borders, shadows,
         </View>
       ))}
       {prescription.notes ? <Text style={{ fontSize: 12, color: colors.textTertiary, fontStyle: "italic" }}>{prescription.notes}</Text> : null}
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -91,26 +94,21 @@ function groupEvents(events: MedicationEvent[]): HistoryGroup[] {
 
 export default function HistoryScreen() {
   const { colors, backgrounds, borders, shadows, radius } = useAppTheme();
-  const [events, setEvents] = useState<MedicationEvent[]>([]);
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  const { data: eventsRes, isLoading: eventsLoading, refetch: refetchEvents } = useEvents();
+  const { data: prescRes, isLoading: prescLoading, refetch: refetchPrescriptions } = usePrescriptions();
 
-  async function loadData() {
-    try {
-      const [eventsRes, prescRes] = await Promise.all([getEvents(), getPrescriptions()]);
-      if (eventsRes.results) setEvents(eventsRes.results);
-      if (prescRes.results) setPrescriptions(prescRes.results);
-    } catch {} finally {
-      setLoading(false);
-    }
-  }
+  useFocusEffect(
+    useCallback(() => {
+      refetchEvents();
+      refetchPrescriptions();
+    }, [refetchEvents, refetchPrescriptions]),
+  );
 
-  const groups = useMemo(() => groupEvents(events), [events]);
-  const pastPrescriptions = useMemo(() => prescriptions.filter((p) => !p.is_active), [prescriptions]);
+  const loading = eventsLoading || prescLoading;
+
+  const groups = useMemo(() => groupEvents(eventsRes?.results ?? []), [eventsRes]);
+  const pastPrescriptions = useMemo(() => (prescRes?.results ?? []).filter((p) => !p.is_active), [prescRes]);
 
   const s = useMemo(() => ({
     scroll: { backgroundColor: backgrounds.screen },

@@ -41,6 +41,17 @@ export function useCreatePrescription() {
   });
 }
 
+export function useUpdatePrescription() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: CreatePrescriptionRequest }) =>
+      prescriptionsService.updatePrescription(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: prescriptionKeys.all });
+    },
+  });
+}
+
 export function useDeletePrescription() {
   const queryClient = useQueryClient();
   return useMutation({

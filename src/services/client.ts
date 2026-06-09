@@ -16,7 +16,7 @@ class ApiClientError extends Error {
 }
 
 async function discoverDevice(): Promise<string> {
-  const candidates = ["http://kujikisa.local", "http://192.168.0.195"];
+  const candidates = ["http://kujikisa.local", "http://192.168.1.100","http://192.168.0.195"];
 
   for (const base of candidates) {
     try {

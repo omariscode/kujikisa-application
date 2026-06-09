@@ -1,20 +1,10 @@
-import { isIOS } from "@/src/theme/platform";
+import { isIOS, RADIUS } from "@/src/theme/platform";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import React, { useState, useMemo } from "react";
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { router } from "expo-router";
-import { useAppTheme } from "@/src/theme/ThemeContext";
-import { Card } from "@/src/components/Card";
-import { Loading } from "@/src/components/Loading";
-import { useDeviceStatus, usePrescriptions, useEvents, useConfirmEvent } from "@/src/hooks/useApi";
-import type { MedicationEvent } from "@/src/types";
+import React, { useCallback, useMemo, useState } from "react";
+import { SafeAreaView, ScrollView, StatusBar, Text, TouchableOpacity, View, ActivityIndicator } from "react-native";
+import { useAppTheme } from "../theme/ThemeContext";
+import { usePrescriptions, useEvents, useDeviceStatus, useConfirmEvent } from "@/src/hooks/useApi";
+import { router, useFocusEffect } from "expo-router";
 
 type MedicationStatus = "taken" | "pending" | "upcoming";
 
@@ -24,137 +14,63 @@ interface Medication {
   dose: string;
   time: string;
   status: MedicationStatus;
-  eventId: number;
+  eventId?: number;
 }
 
 function MedicationCard({
   medication,
   onConfirm,
+  confirmingId,
   colors,
   backgrounds,
   borders,
   shadows,
   radius,
-  confirming,
 }: {
   medication: Medication;
   onConfirm: (id: string) => void;
+  confirmingId: string | null;
   colors: any;
   backgrounds: any;
   borders: any;
   shadows: any;
-  radius: any;
-  confirming: boolean;
+  radius: typeof RADIUS;
 }) {
   const isTaken = medication.status === "taken";
   const isPending = medication.status === "pending";
+  const isLoading = confirmingId === medication.id;
   const accentColor = isTaken ? colors.success : isPending ? colors.primary : colors.textTertiary;
   const iconBg = isTaken ? colors.successBg : isPending ? colors.primaryGlass : colors.border;
   const iconName = isTaken ? "check-circle" : "clock-o";
   const iconColor = isTaken ? colors.success : isPending ? colors.primary : colors.textSecondary;
 
   return (
-    <View
-      style={{
-        backgroundColor: backgrounds.card,
-        borderRadius: radius.card,
-        padding: 16,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 12,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: isPending ? colors.primary : borders.card,
-        ...shadows.card,
-        ...(isPending && isIOS ? { shadowColor: colors.primary, shadowOpacity: 0.1 } : {}),
-      }}
-    >
-      <View
-        style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 6,
-          borderTopLeftRadius: radius.card,
-          borderBottomLeftRadius: radius.card,
-          backgroundColor: accentColor,
-        }}
-      />
-      <View
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 24,
-          alignItems: "center",
-          justifyContent: "center",
-          marginLeft: 8,
-          backgroundColor: iconBg,
-        }}
-      >
+    <View style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 16, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", borderWidth: 1, borderColor: isPending ? colors.primary : borders.card, ...shadows.card, ...(isPending && isIOS ? { shadowColor: colors.primary, shadowOpacity: 0.1 } : {}) }}>
+      <View style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 6, borderTopLeftRadius: radius.card, borderBottomLeftRadius: radius.card, backgroundColor: accentColor }} />
+      <View style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", marginLeft: 8, backgroundColor: iconBg }}>
         <FontAwesome name={iconName} size={22} color={iconColor} />
       </View>
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary, opacity: isTaken ? 0.5 : 1 }}>
-            {medication.name}
-          </Text>
-          <Text
-            style={{
-              fontSize: 12,
-              color: isPending ? colors.primary : colors.textSecondary,
-              ...(isPending
-                ? {
-                    fontWeight: "700",
-                    backgroundColor: colors.primaryGlass,
-                    paddingHorizontal: 8,
-                    paddingVertical: 2,
-                    borderRadius: 6,
-                  }
-                : {}),
-              ...(isTaken ? { textDecorationLine: "line-through", opacity: 0.5 } : {}),
-            }}
-          >
-            {medication.time}
-          </Text>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary, opacity: isTaken ? 0.5 : 1 }}>{medication.name}</Text>
+          <Text style={{ fontSize: 12, color: isPending ? colors.primary : colors.textSecondary, ...(isPending ? { fontWeight: "700", backgroundColor: colors.primaryGlass, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 } : {}), ...(isTaken ? { textDecorationLine: "line-through", opacity: 0.5 } : {}) }}>{medication.time}</Text>
         </View>
         <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>{medication.dose}</Text>
       </View>
-      {isPending && (
+      {isPending && medication.eventId && (
         <TouchableOpacity
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: confirming ? colors.primaryTransparent : colors.primary,
-            alignItems: "center",
-            justifyContent: "center",
-            ...(isIOS
-              ? {
-                  shadowColor: colors.primary,
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 4,
-                }
-              : { elevation: 3 }),
-          }}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isLoading ? colors.primaryTransparent : colors.primary, alignItems: "center", justifyContent: "center", ...(isIOS ? { shadowColor: colors.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4 } : { elevation: 3 }) }}
           onPress={() => onConfirm(medication.id)}
+          disabled={isLoading}
           activeOpacity={0.8}
-          disabled={confirming}
         >
-          <FontAwesome name="check" size={16} color="#FFFFFF" />
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <FontAwesome name="check" size={16} color="#FFFFFF" />
+          )}
         </TouchableOpacity>
       )}
-    </View>
-  );
-}
-
-function WaterLevel({ pct }: { pct: number }) {
-  const fillColor =
-    pct > 50 ? "#4CAF50" : pct > 20 ? "#FF9800" : "#F44336";
-  return (
-    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: "#E8F5E9", alignItems: "center", justifyContent: "center" }}>
-      <FontAwesome name="tint" size={16} color={fillColor} />
     </View>
   );
 }
@@ -163,65 +79,82 @@ export default function HomeScreen() {
   const { colors, backgrounds, borders, shadows, radius } = useAppTheme();
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  const { data: deviceStatus, isLoading: statusLoading } = useDeviceStatus();
-  const { data: eventsRes, isLoading: eventsLoading } = useEvents();
-  const { data: prescRes, isLoading: prescLoading } = usePrescriptions();
+  const { data: deviceStatus, isLoading: statusLoading, refetch: refetchStatus } = useDeviceStatus();
+  const { data: eventsRes, isLoading: eventsLoading, refetch: refetchEvents } = useEvents();
+  const { data: prescRes, isLoading: prescLoading, refetch: refetchPrescriptions } = usePrescriptions();
   const confirmMutation = useConfirmEvent();
 
+  useFocusEffect(
+    useCallback(() => {
+      refetchStatus();
+      refetchEvents();
+      refetchPrescriptions();
+    }, [refetchStatus, refetchEvents, refetchPrescriptions]),
+  );
+
   const loading = statusLoading || eventsLoading || prescLoading;
+  const prescriptions = prescRes?.results ?? [];
+  const activePrescription = prescriptions.find((p) => p.is_active);
 
-  const prescriptions = useMemo(() => prescRes?.results ?? [], [prescRes]);
-
-  const meds = useMemo(() => {
-    if (!eventsRes?.results) return [];
+  const todayMeds = useMemo(() => {
+    if (!activePrescription) return [];
+    const allEvents = eventsRes?.results ?? [];
     const today = new Date().toISOString().split("T")[0];
-    const todayEvents = eventsRes.results.filter(
-      (e: MedicationEvent) => e.occurred_at?.startsWith(today),
-    );
-    return todayEvents.map((e: MedicationEvent) => {
-      const item = prescriptions
-        .flatMap((p) => p.items)
-        .find((i) => i.id === e.prescription_item_id);
-      return {
-        id: String(e.id),
-        name: item?.name || `Slot ${e.slot_number}`,
-        dose: item?.dose_quantity || "",
-        time: e.occurred_at?.split("T")[1]?.slice(0, 5) || "",
-        status:
-          e.status === "taken" || e.status === "confirmed_app"
-            ? ("taken" as MedicationStatus)
-            : ("pending" as MedicationStatus),
-        eventId: e.id,
-      };
-    });
-  }, [eventsRes, prescriptions]);
+    const todayEvents = allEvents.filter((e) => e.occurred_at?.startsWith(today));
+
+    const result: Medication[] = [];
+
+    for (const item of activePrescription.items) {
+      const todayEvent = todayEvents.find(
+        (e) => e.slot_number === item.slot_number && e.prescription_item_id === item.id,
+      );
+
+      if (todayEvent) {
+        if (todayEvent.status === "taken" || todayEvent.status === "confirmed_app") continue;
+        result.push({
+          id: String(todayEvent.id),
+          name: item.name,
+          dose: item.dose_quantity || "",
+          time: item.scheduled_time,
+          status: "pending",
+          eventId: todayEvent.id,
+        });
+      } else {
+        result.push({
+          id: `item-${item.id || item.slot_number}`,
+          name: item.name,
+          dose: item.dose_quantity || "",
+          time: item.scheduled_time,
+          status: "upcoming",
+        });
+      }
+    }
+
+    return result.sort((a, b) => a.time.localeCompare(b.time));
+  }, [activePrescription, eventsRes]);
+
+  const takenCount = useMemo(() => {
+    if (!activePrescription) return 0;
+    const allEvents = eventsRes?.results ?? [];
+    const today = new Date().toISOString().split("T")[0];
+    return allEvents.filter(
+      (e) => e.occurred_at?.startsWith(today) && (e.status === "taken" || e.status === "confirmed_app"),
+    ).length;
+  }, [activePrescription, eventsRes]);
+
+  const totalTodayItems = activePrescription?.items.length ?? 0;
 
   const handleConfirm = async (id: string) => {
-    const med = meds.find((m) => m.id === id);
+    const med = todayMeds.find((m) => m.id === id);
     if (!med?.eventId) return;
     setConfirmingId(id);
     try {
-      await confirmMutation.mutateAsync({
-        id: med.eventId,
-        data: { status: "taken" },
-      });
-    } catch {} finally {
-      setConfirmingId(null);
-    }
+      await confirmMutation.mutateAsync({ id: med.eventId, data: { status: "taken" } });
+    } catch {}
+    setConfirmingId(null);
   };
 
-  const activePrescription = useMemo(
-    () => prescriptions.find((p) => p.is_active),
-    [prescriptions],
-  );
-
-  const today = new Date().toLocaleDateString("pt-AO", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-  });
-  const takenCount = meds.filter((m) => m.status === "taken").length;
-  const totalPrescriptionItems = prescriptions.flatMap((p) => p.items).length;
+  const today = new Date().toLocaleDateString("pt-AO", { weekday: "short", day: "2-digit", month: "short" });
 
   const waterLevel = deviceStatus?.water_level_pct ?? 0;
   const batteryLevel = deviceStatus?.battery_level_pct ?? 0;
@@ -230,54 +163,23 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: backgrounds.screen }}>
       <StatusBar />
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: 24,
-          paddingBottom: 100,
-          gap: 16,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 24, paddingBottom: 100, gap: 16 }} showsVerticalScrollIndicator={false}>
         {loading ? (
-          <Loading message="Carregando..." fullScreen />
+          <View style={{ paddingVertical: 60, alignItems: "center" }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
         ) : (
           <>
-            <Card style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: borders.card, ...shadows.card }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <View
-                  style={{
-                    width: 48,
-                    height: 48,
-                    borderRadius: 24,
-                    backgroundColor: isConnected ? colors.successBg : colors.errorBg,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
+                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: isConnected ? colors.successBg : colors.errorBg, alignItems: "center", justifyContent: "center" }}>
                   <FontAwesome name="wifi" size={22} color={isConnected ? colors.success : colors.error} />
                 </View>
                 <View>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}>
-                    Kujikisa Dispenser
-                  </Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}>Kujikisa Dispenser</Text>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
-                    <View
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: isConnected ? colors.success : colors.error,
-                      }}
-                    />
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        color: isConnected ? colors.success : colors.error,
-                        fontWeight: "500",
-                      }}
-                    >
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isConnected ? colors.success : colors.error }} />
+                    <Text style={{ fontSize: 13, color: isConnected ? colors.success : colors.error, fontWeight: "500" }}>
                       {isConnected ? "Conectado" : "Desconectado"}
                     </Text>
                   </View>
@@ -285,302 +187,85 @@ export default function HomeScreen() {
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <FontAwesome
-                    name={
-                      batteryLevel > 50
-                        ? "battery-3"
-                        : batteryLevel > 20
-                          ? "battery-2"
-                          : "battery-1"
-                    }
-                    size={16}
-                    color={colors.textPrimary}
-                  />
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}>
-                    {" "}
-                    {batteryLevel}%
-                  </Text>
+                  <FontAwesome name={batteryLevel > 50 ? "battery-3" : batteryLevel > 20 ? "battery-2" : "battery-1"} size={16} color={colors.textPrimary} />
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}> {batteryLevel}%</Text>
                 </View>
-                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>
-                  Bateria
-                </Text>
+                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>Bateria</Text>
               </View>
-            </Card>
+            </View>
 
-            <Card>
-              <Text
-                style={{
-                  fontSize: 13,
-                  color: colors.textSecondary,
-                  marginBottom: 10,
-                  fontWeight: "500",
-                }}
-              >
-                {takenCount} de {meds.length} medicamentos tomados hoje
+            <View style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 16, borderWidth: 1, borderColor: borders.card, ...shadows.card }}>
+              <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 10, fontWeight: "500" }}>
+                {takenCount} de {totalTodayItems} medicamentos tomados hoje
               </Text>
-              <View
-                style={{
-                  height: 8,
-                  backgroundColor: borders.subtle,
-                  borderRadius: 50,
-                  overflow: "hidden",
-                }}
-              >
-                <View
-                  style={{
-                    height: "100%",
-                    backgroundColor: colors.primary,
-                    borderRadius: 50,
-                    width:
-                      meds.length > 0
-                        ? `${(takenCount / meds.length) * 100}%`
-                        : "0%",
-                  }}
-                />
+              <View style={{ height: 8, backgroundColor: borders.subtle, borderRadius: 50, overflow: "hidden" }}>
+                <View style={{ height: "100%", backgroundColor: colors.primary, borderRadius: 50, width: totalTodayItems > 0 ? `${(takenCount / totalTodayItems) * 100}%` : "0%" }} />
               </View>
-            </Card>
+            </View>
 
             {activePrescription ? (
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => router.push("/(app)/(tabs)/history")}
-                style={{
-                  backgroundColor: backgrounds.card,
-                  borderRadius: radius.card,
-                  padding: 16,
-                  borderWidth: 1,
-                  borderColor: colors.primary,
-                  ...shadows.card,
-                }}
+                onPress={() => router.push(`/(app)/prescription-detail?id=${activePrescription.id}`)}
+                style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 16, borderWidth: 1, borderColor: colors.primary, ...shadows.card }}
               >
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 12,
-                  }}
-                >
-                  <Text style={{ fontSize: 15, fontWeight: "700", color: colors.textPrimary }}>
-                    Prescrição Ativa
-                  </Text>
-                  <View
-                    style={{
-                      backgroundColor: colors.successBg,
-                      paddingHorizontal: 10,
-                      paddingVertical: 3,
-                      borderRadius: 50,
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.success }}>
-                      Ativa
-                    </Text>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: colors.textPrimary }}>Prescrição Ativa #{activePrescription.id}</Text>
+                  <View style={{ backgroundColor: colors.successBg, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 50 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.success }}>Ativa</Text>
                   </View>
                 </View>
-                <View style={{ gap: 8 }}>
-                  {activePrescription.items.map((item) => (
-                    <View
-                      key={item.id}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-                    >
-                      <View
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 10,
-                          backgroundColor: colors.primaryGlass,
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        <Text
-                          style={{
-                            fontSize: 14,
-                            fontWeight: "700",
-                            color: colors.primary,
-                          }}
-                        >
-                          {item.slot_number}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={{
-                            fontSize: 14,
-                            fontWeight: "600",
-                            color: colors.textPrimary,
-                          }}
-                        >
-                          {item.name}
-                        </Text>
-                        <Text style={{ fontSize: 12, color: colors.textTertiary }}>
-                          {item.dose_quantity} · {item.scheduled_time}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
                 {activePrescription.start_date && (
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      gap: 16,
-                      marginTop: 10,
-                      paddingTop: 10,
-                      borderTopWidth: 1,
-                      borderTopColor: borders.subtle,
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, color: colors.textTertiary }}>
-                      Início: {activePrescription.start_date}
-                    </Text>
-                    {activePrescription.end_date && (
-                      <Text style={{ fontSize: 11, color: colors.textTertiary }}>
-                        Fim: {activePrescription.end_date}
-                      </Text>
-                    )}
+                  <View style={{ flexDirection: "row", gap: 16 }}>
+                    <Text style={{ fontSize: 12, color: colors.textTertiary }}>Início: {activePrescription.start_date}</Text>
+                    {activePrescription.end_date && <Text style={{ fontSize: 12, color: colors.textTertiary }}>Fim: {activePrescription.end_date}</Text>}
                   </View>
                 )}
               </TouchableOpacity>
             ) : (
-              <Card variant="outlined" style={{ padding: 14 }}>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: "700",
-                    color: colors.textPrimary,
-                    marginBottom: 12,
-                  }}
-                >
-                  Dispensador
-                </Text>
+              <View style={{ backgroundColor: backgrounds.card, borderRadius: radius.cardSm, padding: 14, borderWidth: 1, borderColor: borders.card, ...shadows.cardSm }}>
+                <Text style={{ fontSize: 15, fontWeight: "700", color: colors.textPrimary, marginBottom: 12 }}>Dispensador</Text>
                 <View style={{ flexDirection: "row", gap: 12 }}>
                   <View style={{ flex: 1, alignItems: "center", gap: 4 }}>
-                    <View
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 10,
-                        backgroundColor: colors.primaryGlass,
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
+                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.primaryGlass, alignItems: "center", justifyContent: "center" }}>
                       <FontAwesome name="plus-square" size={16} color={colors.primary} />
                     </View>
-                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
-                      {totalPrescriptionItems}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        color: colors.textTertiary,
-                        fontWeight: "500",
-                        textAlign: "center",
-                      }}
-                    >
-                      Medicamentos
-                    </Text>
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>{totalTodayItems}</Text>
+                    <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: "500", textAlign: "center" }}>Medicamentos</Text>
                   </View>
-                  <View
-                    style={{
-                      width: 1,
-                      height: 32,
-                      backgroundColor: borders.subtle,
-                      alignSelf: "center",
-                    }}
-                  />
+                  <View style={{ width: 1, height: 32, backgroundColor: borders.subtle, alignSelf: "center" }} />
                   <View style={{ flex: 1, alignItems: "center", gap: 4 }}>
-                    <WaterLevel pct={waterLevel} />
-                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
-                      {waterLevel}%
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        color: colors.textTertiary,
-                        fontWeight: "500",
-                        textAlign: "center",
-                      }}
-                    >
-                      Água
-                    </Text>
+                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.successBg, alignItems: "center", justifyContent: "center" }}>
+                      <FontAwesome name="tint" size={16} color={colors.success} />
+                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>{waterLevel}%</Text>
+                    <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: "500", textAlign: "center" }}>Água</Text>
                   </View>
-                  <View
-                    style={{
-                      width: 1,
-                      height: 32,
-                      backgroundColor: borders.subtle,
-                      alignSelf: "center",
-                    }}
-                  />
+                  <View style={{ width: 1, height: 32, backgroundColor: borders.subtle, alignSelf: "center" }} />
                   <View style={{ flex: 1, alignItems: "center", gap: 4 }}>
-                    <View
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: 10,
-                        backgroundColor: colors.primaryGlass,
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
+                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.primaryGlass, alignItems: "center", justifyContent: "center" }}>
                       <FontAwesome name="wifi" size={16} color={colors.primary} />
                     </View>
-                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
-                      {isConnected ? "ON" : "OFF"}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        color: colors.textTertiary,
-                        fontWeight: "500",
-                        textAlign: "center",
-                      }}
-                    >
-                      Dispensador
-                    </Text>
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>{isConnected ? "ON" : "OFF"}</Text>
+                    <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: "500", textAlign: "center" }}>Dispensador</Text>
                   </View>
                 </View>
-              </Card>
+              </View>
             )}
 
             <View style={{ gap: 12 }}>
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "flex-end",
-                  marginBottom: 4,
-                }}
-              >
-                <Text style={{ fontSize: 20, fontWeight: "600", color: colors.textPrimary }}>
-                  Agenda de Hoje
-                </Text>
-                <Text style={{ fontSize: 12, fontWeight: "500", color: colors.primary }}>
-                  {today}
-                </Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 4 }}>
+                <Text style={{ fontSize: 20, fontWeight: "600", color: colors.textPrimary }}>Agenda de Hoje</Text>
+                <Text style={{ fontSize: 12, fontWeight: "500", color: colors.primary }}>{today}</Text>
               </View>
-              {meds.length === 0 ? (
-                <Card style={{ alignItems: "center", gap: 8 }}>
-                  <FontAwesome name="calendar" size={32} color={colors.textTertiary} />
-                  <Text style={{ fontSize: 14, color: colors.textSecondary }}>
-                    Nenhum evento de medicação hoje
-                  </Text>
-                </Card>
+              {todayMeds.length === 0 ? (
+                <View style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 24, alignItems: "center", gap: 8, borderWidth: 1, borderColor: borders.card }}>
+                  <FontAwesome name="calendar-check-o" size={32} color={colors.textTertiary} />
+                  <Text style={{ fontSize: 14, color: colors.textSecondary }}>Todos os medicamentos de hoje foram tomados</Text>
+                </View>
               ) : (
-                meds.map((med) => (
-                  <MedicationCard
-                    key={med.id}
-                    medication={med}
-                    onConfirm={handleConfirm}
-                    colors={colors}
-                    backgrounds={backgrounds}
-                    borders={borders}
-                    shadows={shadows}
-                    radius={radius}
-                    confirming={confirmingId === med.id}
-                  />
+                todayMeds.map((med) => (
+                  <MedicationCard key={med.id} medication={med} onConfirm={handleConfirm} confirmingId={confirmingId} colors={colors} backgrounds={backgrounds} borders={borders} shadows={shadows} radius={radius} />
                 ))
               )}
             </View>
