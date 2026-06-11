@@ -20,24 +20,24 @@ function TimePicker({ value, onChange, colors, backgrounds, borders, radius, inp
 }) {
   const [h, m] = value.split(":").map(Number);
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: backgrounds.elevated, borderRadius: radius.input, borderWidth: 1, borderColor: inputBorder, paddingVertical: 6, paddingHorizontal: 12 }}>
-      <View style={{ alignItems: "center", gap: 2 }}>
-        <TouchableOpacity onPress={() => onChange(`${String((h + 1) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`)} style={{ padding: 2 }}>
-          <Ionicons name="chevron-up" size={14} color={colors.primary} />
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: backgrounds.elevated, borderRadius: radius.input, borderWidth: 1, borderColor: inputBorder, paddingVertical: 8, paddingHorizontal: 14 }}>
+      <View style={{ alignItems: "center", gap: 4 }}>
+        <TouchableOpacity onPress={() => onChange(`${String((h + 1) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`)} style={{ padding: 4 }}>
+          <Ionicons name="chevron-up" size={18} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={{ fontSize: 20, fontWeight: "700", color: colors.textPrimary, minWidth: 28, textAlign: "center" }}>{String(h).padStart(2, "0")}</Text>
-        <TouchableOpacity onPress={() => onChange(`${String((h - 1 + 24) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`)} style={{ padding: 2 }}>
-          <Ionicons name="chevron-down" size={14} color={colors.primary} />
+        <Text style={{ fontSize: 24, fontWeight: "700", color: colors.textPrimary, minWidth: 36, textAlign: "center" }}>{String(h).padStart(2, "0")}</Text>
+        <TouchableOpacity onPress={() => onChange(`${String((h - 1 + 24) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`)} style={{ padding: 4 }}>
+          <Ionicons name="chevron-down" size={18} color={colors.primary} />
         </TouchableOpacity>
       </View>
-      <Text style={{ fontSize: 20, fontWeight: "700", color: colors.textTertiary, marginHorizontal: 2 }}>:</Text>
-      <View style={{ alignItems: "center", gap: 2 }}>
-        <TouchableOpacity onPress={() => onChange(`${String(h).padStart(2, "0")}:${String((m + 1) % 60).padStart(2, "0")}`)} style={{ padding: 2 }}>
-          <Ionicons name="chevron-up" size={14} color={colors.primary} />
+      <Text style={{ fontSize: 24, fontWeight: "700", color: colors.textTertiary, marginHorizontal: 4 }}>:</Text>
+      <View style={{ alignItems: "center", gap: 4 }}>
+        <TouchableOpacity onPress={() => onChange(`${String(h).padStart(2, "0")}:${String((m + 1) % 60).padStart(2, "0")}`)} style={{ padding: 4 }}>
+          <Ionicons name="chevron-up" size={18} color={colors.primary} />
         </TouchableOpacity>
-        <Text style={{ fontSize: 20, fontWeight: "700", color: colors.textPrimary, minWidth: 28, textAlign: "center" }}>{String(m).padStart(2, "0")}</Text>
-        <TouchableOpacity onPress={() => onChange(`${String(h).padStart(2, "0")}:${String((m - 1 + 60) % 60).padStart(2, "0")}`)} style={{ padding: 2 }}>
-          <Ionicons name="chevron-down" size={14} color={colors.primary} />
+        <Text style={{ fontSize: 24, fontWeight: "700", color: colors.textPrimary, minWidth: 36, textAlign: "center" }}>{String(m).padStart(2, "0")}</Text>
+        <TouchableOpacity onPress={() => onChange(`${String(h).padStart(2, "0")}:${String((m - 1 + 60) % 60).padStart(2, "0")}`)} style={{ padding: 4 }}>
+          <Ionicons name="chevron-down" size={18} color={colors.primary} />
         </TouchableOpacity>
       </View>
     </View>
@@ -81,6 +81,7 @@ export default function PrescriptionDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
+  const [prescriptionName, setPrescriptionName] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -88,6 +89,7 @@ export default function PrescriptionDetailScreen() {
 
   useMemo(() => {
     if (prescription) {
+      setPrescriptionName(prescription.name || "");
       setStartDate(prescription.start_date || "");
       setEndDate(prescription.end_date || "");
       setNotes(prescription.notes || "");
@@ -135,6 +137,7 @@ export default function PrescriptionDetailScreen() {
       await updateMutation.mutateAsync({
         id: presId,
         data: {
+          name: prescriptionName.trim() || undefined,
           start_date: startDate,
           end_date: endDate || undefined,
           is_active: prescription?.is_active,
@@ -195,7 +198,7 @@ export default function PrescriptionDetailScreen() {
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: TabBarPadding, gap: 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <View style={{ gap: 4 }}>
-            <Text style={{ fontSize: 26, fontWeight: "700", color: colors.textPrimary }}>Prescrição #{prescription.id}</Text>
+            <Text style={{ fontSize: 26, fontWeight: "700", color: colors.textPrimary }}>{prescription.name || `Prescrição #${prescription.id}`}</Text>
             <View style={{ flexDirection: "row", gap: 12 }}>
               <Text style={{ fontSize: 14, color: colors.textSecondary }}>Início: {prescription.start_date}</Text>
               {prescription.end_date && <Text style={{ fontSize: 14, color: colors.textSecondary }}>Fim: {prescription.end_date}</Text>}
@@ -223,7 +226,13 @@ export default function PrescriptionDetailScreen() {
 
         {editing && (
           <View style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 16, gap: 16, borderWidth: 1, borderColor: borders.card, ...shadows.card }}>
-            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.textPrimary }}>Período do Tratamento</Text>
+            <Text style={{ fontSize: 15, fontWeight: "700", color: colors.textPrimary }}>Informações Globais</Text>
+
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}>Nome da Prescrição</Text>
+              <TextInput style={{ height: 48, paddingHorizontal: 16, borderRadius: radius.input, borderWidth: 1, borderColor: inputBorder, backgroundColor: backgrounds.elevated, fontSize: 16, color: colors.textPrimary }} placeholder="Ex: Tratamento de 30 dias" placeholderTextColor={colors.textMuted} value={prescriptionName} onChangeText={setPrescriptionName} autoCapitalize="sentences" />
+            </View>
+
             <View style={{ flexDirection: "row", gap: 12 }}>
               <DateInput label="Data de início" value={startDate} onChange={setStartDate} colors={colors} backgrounds={backgrounds} radius={radius} inputBorder={inputBorder} />
               <DateInput label="Data de fim" value={endDate} onChange={setEndDate} colors={colors} backgrounds={backgrounds} radius={radius} inputBorder={inputBorder} />
@@ -291,31 +300,26 @@ export default function PrescriptionDetailScreen() {
 
                 <View style={{ gap: 6 }}>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}>Slot do Dispenser</Text>
-                  <View style={{ gap: 10 }}>
-                    {[0, 4].map((rowOffset) => (
-                      <View key={rowOffset} style={{ flexDirection: "row", gap: 10 }}>
-                        {[1, 2, 3, 4].map((col) => {
-                          const slot = rowOffset + col;
-                          const isSelected = item.slot_number === slot;
-                          const occupiedByOthers = items.some((other, oi) => oi !== idx && other.slot_number === slot);
-                          const isLocked = occupiedByOthers && !isSelected;
-                          return (
-                            <TouchableOpacity
-                              key={slot}
-                              style={{ flex: 1, aspectRatio: 1, borderRadius: 12, borderWidth: 2, borderColor: isSelected ? colors.primary : (isIOS ? (isDark ? "rgba(255,255,255,0.2)" : "rgba(60,60,67,0.2)") : (isDark ? "rgba(255,255,255,0.2)" : "rgba(0,94,164,0.25)")), backgroundColor: isSelected ? colors.primaryLight : backgrounds.elevated, alignItems: "center", justifyContent: "center", opacity: isLocked ? 0.5 : 1, ...(isSelected ? shadows.button : {}) }}
-                              onPress={() => !isLocked && updateItem(idx, "slot_number", slot)}
-                              disabled={isLocked}
-                            >
-                              {isLocked && !isSelected ? (
-                                <Ionicons name="lock-closed" size={20} color={colors.textTertiary} />
-                              ) : (
-                                <Text style={{ fontSize: 20, fontWeight: isSelected ? "700" : "600", color: isSelected ? "#FFFFFF" : colors.textSecondary }}>{slot}</Text>
-                              )}
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    ))}
+                  <View style={{ flexDirection: "row", gap: 12 }}>
+                    {[1, 2, 3].map((slot) => {
+                      const isSelected = item.slot_number === slot;
+                      const occupiedByOthers = items.some((other, oi) => oi !== idx && other.slot_number === slot);
+                      const isLocked = occupiedByOthers && !isSelected;
+                      return (
+                        <TouchableOpacity
+                          key={slot}
+                          style={{ flex: 1, aspectRatio: 1.2, borderRadius: 12, borderWidth: 2, borderColor: isSelected ? colors.primary : (isIOS ? (isDark ? "rgba(255,255,255,0.2)" : "rgba(60,60,67,0.2)") : (isDark ? "rgba(255,255,255,0.2)" : "rgba(0,94,164,0.25)")), backgroundColor: isSelected ? colors.primaryLight : backgrounds.elevated, alignItems: "center", justifyContent: "center", opacity: isLocked ? 0.5 : 1, ...(isSelected ? shadows.button : {}) }}
+                          onPress={() => !isLocked && updateItem(idx, "slot_number", slot)}
+                          disabled={isLocked}
+                        >
+                          {isLocked && !isSelected ? (
+                            <Ionicons name="lock-closed" size={22} color={colors.textTertiary} />
+                          ) : (
+                            <Text style={{ fontSize: 24, fontWeight: isSelected ? "700" : "600", color: isSelected ? "#FFFFFF" : colors.textSecondary }}>{slot}</Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </View>
               </>

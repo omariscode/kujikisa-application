@@ -3,7 +3,8 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import React, { useCallback, useMemo, useState } from "react";
 import { SafeAreaView, ScrollView, StatusBar, Text, TouchableOpacity, View, ActivityIndicator } from "react-native";
 import { useAppTheme } from "../theme/ThemeContext";
-import { usePrescriptions, useEvents, useDeviceStatus, useConfirmEvent } from "@/src/hooks/useApi";
+import { usePrescriptions, useEvents, useDeviceStatus, useConfirmEvent, useManualDispense } from "@/src/hooks/useApi";
+import { useMedicationAlarm } from "@/src/hooks/useMedicationAlarm";
 import { router, useFocusEffect } from "expo-router";
 
 type MedicationStatus = "taken" | "pending" | "upcoming";
@@ -15,6 +16,14 @@ interface Medication {
   time: string;
   status: MedicationStatus;
   eventId?: number;
+  slotNumber: number;
+}
+
+function isTimeAvailable(scheduledTime: string): boolean {
+  const now = new Date();
+  const [hours, minutes] = scheduledTime.split(":").map(Number);
+  const scheduled = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hours, minutes);
+  return now >= scheduled;
 }
 
 function MedicationCard({
@@ -39,13 +48,16 @@ function MedicationCard({
   const isTaken = medication.status === "taken";
   const isPending = medication.status === "pending";
   const isLoading = confirmingId === medication.id;
-  const accentColor = isTaken ? colors.success : isPending ? colors.primary : colors.textTertiary;
-  const iconBg = isTaken ? colors.successBg : isPending ? colors.primaryGlass : colors.border;
-  const iconName = isTaken ? "check-circle" : "clock-o";
-  const iconColor = isTaken ? colors.success : isPending ? colors.primary : colors.textSecondary;
+  const timeAvailable = isTimeAvailable(medication.time);
+  const buttonDisabled = !timeAvailable || isLoading;
+
+  const accentColor = isTaken ? colors.success : timeAvailable ? colors.primary : colors.textTertiary;
+  const iconBg = isTaken ? colors.successBg : timeAvailable ? colors.primaryGlass : colors.border;
+  const iconName = isTaken ? "check-circle" : timeAvailable ? "clock-o" : "lock";
+  const iconColor = isTaken ? colors.success : timeAvailable ? colors.primary : colors.textSecondary;
 
   return (
-    <View style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 16, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", borderWidth: 1, borderColor: isPending ? colors.primary : borders.card, ...shadows.card, ...(isPending && isIOS ? { shadowColor: colors.primary, shadowOpacity: 0.1 } : {}) }}>
+    <View style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 16, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", borderWidth: 1, borderColor: timeAvailable && !isTaken ? colors.primary : borders.card, ...shadows.card, ...(timeAvailable && !isTaken && isIOS ? { shadowColor: colors.primary, shadowOpacity: 0.1 } : {}) }}>
       <View style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 6, borderTopLeftRadius: radius.card, borderBottomLeftRadius: radius.card, backgroundColor: accentColor }} />
       <View style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", marginLeft: 8, backgroundColor: iconBg }}>
         <FontAwesome name={iconName} size={22} color={iconColor} />
@@ -53,21 +65,21 @@ function MedicationCard({
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
           <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary, opacity: isTaken ? 0.5 : 1 }}>{medication.name}</Text>
-          <Text style={{ fontSize: 12, color: isPending ? colors.primary : colors.textSecondary, ...(isPending ? { fontWeight: "700", backgroundColor: colors.primaryGlass, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 } : {}), ...(isTaken ? { textDecorationLine: "line-through", opacity: 0.5 } : {}) }}>{medication.time}</Text>
+          <Text style={{ fontSize: 12, color: timeAvailable && !isTaken ? colors.primary : colors.textSecondary, ...(timeAvailable && !isTaken ? { fontWeight: "700", backgroundColor: colors.primaryGlass, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 } : {}), ...(isTaken ? { textDecorationLine: "line-through", opacity: 0.5 } : {}) }}>{medication.time}</Text>
         </View>
         <Text style={{ fontSize: 13, color: colors.textSecondary, marginTop: 4 }}>{medication.dose}</Text>
       </View>
-      {isPending && medication.eventId && (
+      {!isTaken && (
         <TouchableOpacity
-          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isLoading ? colors.primaryTransparent : colors.primary, alignItems: "center", justifyContent: "center", ...(isIOS ? { shadowColor: colors.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4 } : { elevation: 3 }) }}
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isLoading ? colors.primaryTransparent : buttonDisabled ? colors.primaryTransparent : colors.primary, alignItems: "center", justifyContent: "center", opacity: buttonDisabled ? 0.4 : 1, ...(isIOS && !buttonDisabled ? { shadowColor: colors.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4 } : { elevation: buttonDisabled ? 0 : 3 }) }}
           onPress={() => onConfirm(medication.id)}
-          disabled={isLoading}
+          disabled={buttonDisabled}
           activeOpacity={0.8}
         >
           {isLoading ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <FontAwesome name="check" size={16} color="#FFFFFF" />
+            <FontAwesome name={timeAvailable ? "check" : "lock"} size={16} color={buttonDisabled ? colors.textSecondary : "#FFFFFF"} />
           )}
         </TouchableOpacity>
       )}
@@ -83,6 +95,7 @@ export default function HomeScreen() {
   const { data: eventsRes, isLoading: eventsLoading, refetch: refetchEvents } = useEvents();
   const { data: prescRes, isLoading: prescLoading, refetch: refetchPrescriptions } = usePrescriptions();
   const confirmMutation = useConfirmEvent();
+  const dispenseMutation = useManualDispense();
 
   useFocusEffect(
     useCallback(() => {
@@ -118,6 +131,7 @@ export default function HomeScreen() {
           time: item.scheduled_time,
           status: "pending",
           eventId: todayEvent.id,
+          slotNumber: item.slot_number,
         });
       } else {
         result.push({
@@ -126,6 +140,7 @@ export default function HomeScreen() {
           dose: item.dose_quantity || "",
           time: item.scheduled_time,
           status: "upcoming",
+          slotNumber: item.slot_number,
         });
       }
     }
@@ -146,13 +161,22 @@ export default function HomeScreen() {
 
   const handleConfirm = async (id: string) => {
     const med = todayMeds.find((m) => m.id === id);
-    if (!med?.eventId) return;
+    if (!med) return;
     setConfirmingId(id);
     try {
-      await confirmMutation.mutateAsync({ id: med.eventId, data: { status: "taken" } });
+      if (med.eventId) {
+        await confirmMutation.mutateAsync({ id: med.eventId, data: { status: "taken" } });
+      } else {
+        await dispenseMutation.mutateAsync(med.slotNumber);
+      }
+      refetchEvents();
     } catch {}
     setConfirmingId(null);
   };
+
+  useMedicationAlarm(
+    todayMeds.map((m) => ({ name: m.name, scheduledTime: m.time })),
+  );
 
   const today = new Date().toLocaleDateString("pt-AO", { weekday: "short", day: "2-digit", month: "short" });
 
@@ -210,7 +234,7 @@ export default function HomeScreen() {
                 style={{ backgroundColor: backgrounds.card, borderRadius: radius.card, padding: 16, borderWidth: 1, borderColor: colors.primary, ...shadows.card }}
               >
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                  <Text style={{ fontSize: 15, fontWeight: "700", color: colors.textPrimary }}>Prescrição Ativa #{activePrescription.id}</Text>
+                  <Text style={{ fontSize: 15, fontWeight: "700", color: colors.textPrimary }}>{activePrescription.name || `Prescrição #${activePrescription.id}`}</Text>
                   <View style={{ backgroundColor: colors.successBg, paddingHorizontal: 10, paddingVertical: 3, borderRadius: 50 }}>
                     <Text style={{ fontSize: 11, fontWeight: "700", color: colors.success }}>Ativa</Text>
                   </View>

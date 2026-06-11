@@ -12,12 +12,25 @@ e a lógica de dispensação.
 
 ```
 App Mobile <---- HTTP ----> ESP32 (192.168.4.1:80)
-                                ├── LittleFS (users, prescrições, eventos)
+                                ├── SQLite (utilizadores, prescrições, eventos, schedule)
                                 ├── GPIO (servos, buzzer, botão, sensores)
                                 └── WiFi AP (sempre ligado)
 ```
 
 **Nada depende de um servidor externo.** O PC com Django é opcional para backup.
+
+### Hardware
+
+| Componente | Especificação |
+|---|---|
+| Microcontrolador | ESP32 (ESP32 Dev Module) |
+| Atuador | 1 servo motor 360° (GPIO 13) |
+| Slots | 3 (ângulos: 0°, 120°, 240°) |
+| Botão confirmação | GPIO 33 (INPUT_PULLUP) |
+| Buzzer | GPIO 27 |
+| LED status | GPIO 2 |
+| Sensor água | GPIO 34 (analógico) |
+| Sensor bateria | GPIO 35 (analógico) |
 
 ### Estado do Firmware
 
@@ -30,8 +43,10 @@ App Mobile <---- HTTP ----> ESP32 (192.168.4.1:80)
 | IP em modo AP | `http://192.168.4.1` |
 | mDNS | `http://kujikisa.local` |
 | Porta | `80` |
-| Auth | Bearer token (SHA256 + token aleatório) |
-| Armazenamento | LittleFS (JSON) |
+| Auth | Bearer token (SHA256 + token aleatório 32 chars hex) |
+| Armazenamento | SQLite em LittleFS (`/littlefs/kujikisa.db`) |
+| Slots físicos | 3 (ângulos 0°, 120°, 240°) |
+| Servo | 1 servo 360° com `writeMicroseconds()` (500-2500µs) |
 
 ### Descoberta do Dispositivo
 
@@ -60,6 +75,70 @@ Fluxo:
 - Respostas: `application/json`
 - Erros: `{ "detail": "..." }`
 - Timeout recomendado: 3–8 segundos
+
+---
+
+## Base de Dados SQLite (On-Device)
+
+O ESP32 utiliza SQLite em LittleFS com as seguintes tabelas:
+
+### `users`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `id` | INTEGER PK | ID do utilizador |
+| `email` | TEXT UNIQUE | Email |
+| `password_hash` | TEXT | Hash SHA256 da password |
+| `full_name` | TEXT | Nome completo |
+| `phone` | TEXT | Telefone |
+| `fcm_token` | TEXT | Token FCM (não implementado) |
+| `is_active` | INTEGER | 1 = activo |
+| `is_staff` | INTEGER | 1 = admin |
+
+### `auth_tokens`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `token` | TEXT PK | Token de acesso (32 chars hex) |
+| `user_id` | INTEGER FK | Referência ao utilizador |
+
+### `prescriptions`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `id` | INTEGER PK | ID da prescrição |
+| `user_id` | INTEGER FK | Dono da prescrição |
+| `device_id` | INTEGER | ID do dispositivo (sempre 1) |
+| `name` | TEXT | Nome da prescrição (ex: "Antibiótico Junho") |
+| `start_date` | TEXT | Data inicial `YYYY-MM-DD` |
+| `end_date` | TEXT | Data final `YYYY-MM-DD` |
+| `is_active` | INTEGER | 1 = activo |
+| `notes` | TEXT | Observações |
+
+### `prescription_items`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `id` | INTEGER PK | ID do item |
+| `prescription_id` | INTEGER FK | Prescrição pai |
+| `name` | TEXT | Nome do medicamento |
+| `dose_quantity` | TEXT | Ex: "1 comprimido" |
+| `scheduled_time` | TEXT | Horário `HH:MM` |
+| `slot_number` | INTEGER | Slot físico 1..3 |
+
+### `events`
+| Coluna | Tipo | Descrição |
+|---|---|---|
+| `id` | INTEGER PK | ID do evento |
+| `prescription_item_id` | INTEGER | ID do item (-1 se manual) |
+| `user_id` | INTEGER | ID do utilizador |
+| `status` | TEXT | `dispensed`, `taken`, `missed`, `confirmed_app`, `manual` |
+| `slot_number` | INTEGER | Slot físico |
+| `occurred_at` | TEXT | ISO datetime do evento |
+| `taken_at` | TEXT | ISO datetime da tomada |
+| `confirmed_by_device` | INTEGER | 1 = confirmado pelo botão físico |
+| `confirmed_by_app` | INTEGER | 1 = confirmado pelo app |
+
+### `schedule`
+Schedule compilado (reconstruído automaticamente via `rebuildSchedule()` sempre
+que uma prescrição é criada/alterada/removida). Contém os mesmos campos que
+`prescription_items` + `prescription_id`, `user_id`, `start_date`, `end_date`, `active`.
 
 ---
 
@@ -131,6 +210,7 @@ Estado operacional completo do ESP32.
 ### `POST /api/time`
 
 Acerta o relógio do ESP32. **Deve ser chamado sempre que o app conectar.**
+O tempo é persistido em NVS e restaurado após reboot (fallback até NTP sincronizar).
 
 **Request**:
 ```json
@@ -157,7 +237,7 @@ Acerta o relógio do ESP32. **Deve ser chamado sempre que o app conectar.**
 
 ### `POST /api/wifi`
 
-Guarda credenciais WiFi no ESP32. Requer reboot para aplicar.
+Guarda credenciais WiFi no ESP32 (NVS persistente). Requer reboot para aplicar.
 
 **Request**:
 ```json
@@ -370,6 +450,7 @@ Lista as prescrições do utilizador autenticado.
       "id": 1,
       "user_id": 1,
       "device_id": 1,
+      "name": "Antibiótico Junho",
       "start_date": "2026-06-01",
       "end_date": "2026-06-30",
       "is_active": true,
@@ -395,17 +476,21 @@ Lista as prescrições do utilizador autenticado.
 }
 ```
 
+> Nota: `dose_quantity` é uma **string** no ESP32 (ex: "1 comprimido"), ao contrário do Django onde é um número inteiro.
+
 ---
 
 ### `POST /api/medications/prescriptions/`
 
-Criar uma nova prescrição com items.
+Criar uma nova prescrição com items. O schedule do dispensador é
+**automaticamente recompilado** após criar/editar/remover prescrições.
 
 **Headers**: `Authorization: Bearer <token>`
 
 **Request**:
 ```json
 {
+  "name": "Antibiótico Junho",
   "start_date": "2026-06-01",
   "end_date": "2026-06-30",
   "is_active": true,
@@ -429,6 +514,7 @@ Criar uma nova prescrição com items.
 
 | Campo | Tipo | Obrigatório | Descrição |
 |---|---|---|---|
+| `name` | string | Não | Nome da prescrição (ex: "Antibiótico Junho") |
 | `start_date` | string | Sim | Data inicial `YYYY-MM-DD` |
 | `end_date` | string | Não | Data final `YYYY-MM-DD` |
 | `is_active` | boolean | Não | `true` por defeito |
@@ -437,7 +523,7 @@ Criar uma nova prescrição com items.
 | `items[].name` | string | Sim | Nome do medicamento |
 | `items[].dose_quantity` | string | Não | Ex: "1 comprimido" |
 | `items[].scheduled_time` | string | Sim | Horário `HH:MM` |
-| `items[].slot_number` | int | Sim | Slot físico `1..8` |
+| `items[].slot_number` | int | Sim | Slot físico `1..3` |
 
 **Resposta** `201`:
 ```json
@@ -446,8 +532,6 @@ Criar uma nova prescrição com items.
   "detail": "Prescricao criada."
 }
 ```
-
-> O schedule do dispensador é **automaticamente recompilado** após criar/editar/remover prescrições.
 
 ---
 
@@ -462,6 +546,8 @@ Detalhe de uma prescrição específica.
 {
   "id": 1,
   "user_id": 1,
+  "device_id": 1,
+  "name": "Antibiótico Junho",
   "start_date": "2026-06-01",
   "end_date": "2026-06-30",
   "is_active": true,
@@ -482,13 +568,14 @@ Detalhe de uma prescrição específica.
 
 ### `PUT /api/medications/prescriptions/{id}/`
 
-Atualizar prescrição completa.
+Atualizar prescrição completa (substitui todos os items).
 
 **Headers**: `Authorization: Bearer <token>`
 
 **Request** (mesmo formato que POST):
 ```json
 {
+  "name": "Antibiótico (alterado)",
   "start_date": "2026-06-01",
   "end_date": "2026-07-15",
   "is_active": true,
@@ -577,12 +664,29 @@ Lista os últimos 50 eventos do utilizador.
 | `id` | int | ID único do evento |
 | `prescription_item_id` | int | ID do item da prescrição |
 | `user_id` | int | ID do utilizador |
-| `status` | string | `taken`, `missed`, `confirmed_app`, `manual`, `pending` |
+| `status` | string | `dispensed`, `taken`, `missed`, `confirmed_app`, `manual` |
 | `slot_number` | int | Slot físico |
 | `occurred_at` | string | ISO datetime do evento |
 | `taken_at` | string | ISO datetime da tomada (vazio se missed) |
 | `confirmed_by_device` | bool | Confirmado pelo botão físico |
 | `confirmed_by_app` | bool | Confirmado pelo app |
+
+#### Ciclo de Vida do Evento
+
+O evento é **criado imediatamente** no momento da dispensa:
+
+```
+                    ┌──→ taken (botão físico pressionado)
+                    │
+dispensed ──────────┼──→ confirmed_app (app confirma via endpoint)
+                    │
+                    └──→ missed (timeout de 5 min sem confirmação)
+```
+
+**Quando o app ou botão confirma, o servo faz um gesto de confirmação**
+(roda até ao ângulo do slot e volta ao home).
+
+Eventos de teste via `/api/dispense` têm `status = manual`.
 
 ---
 
@@ -598,23 +702,50 @@ Detalhe de um evento específico.
 
 ### `POST /api/medications/events/{id}/confirm/`
 
-Confirmar manualmente uma medicação pelo app.
+Confirmar manualmente uma medicação pelo app. O body é ignorado —
+o evento é sempre marcado como `confirmed_app`.
+
+**Headers**: `Authorization: Bearer <token>`
+
+**Resposta** `200`:
+```json
+{
+  "detail": "Evento confirmado."
+}
+```
+
+Se o evento corresponder ao que está em janela de confirmação activa,
+a janela é cancelada.
+
+---
+
+### `POST /api/medications/take/`
+
+Confirmar toma de medicamento por **slot number** (alternativa ao confirm por ID).
+Procura o evento mais recente com `status = dispensed` para aquele slot e marca
+como `confirmed_app`. O servo faz um gesto de confirmação (roda ao ângulo do slot
+e volta ao home).
 
 **Headers**: `Authorization: Bearer <token>`
 
 **Request**:
 ```json
 {
-  "status": "taken"
+  "slot_number": 1
 }
 ```
-
-`status` pode ser `taken` ou `confirmed_app`.
 
 **Resposta** `200`:
 ```json
 {
-  "detail": "Evento confirmado."
+  "detail": "Medicamento tomado confirmado."
+}
+```
+
+**Erro** `404`:
+```json
+{
+  "detail": "Nenhum evento pendente para este slot."
 }
 ```
 
@@ -671,17 +802,10 @@ Detalhe do dispositivo.
 
 ### `POST /api/devices/pair/`
 
-Vincula o dispositivo ao utilizador. Como o ESP32 já é o dispositivo, o pairing é
-automático.
+Vincula o dispositivo ao utilizador. **Não requer serial_number no body** —
+o pairing é imediato pois o ESP32 é o próprio dispositivo.
 
 **Headers**: `Authorization: Bearer <token>`
-
-**Request**:
-```json
-{
-  "serial_number": "KUJIKISA-ESP32-001"
-}
-```
 
 **Resposta** `200`:
 ```json
@@ -712,7 +836,7 @@ Desvincula o dispositivo.
 
 ### `PATCH /api/devices/{id}/rename/`
 
-Renomear o dispositivo.
+Renomear o dispositivo (persistido em NVS).
 
 **Headers**: `Authorization: Bearer <token>`
 
@@ -744,10 +868,8 @@ Renomear o dispositivo.
 
 ### `GET /api/devices/{id}/local-schedule/`
 
-Schedule exportado para compatibilidade com o formato Django. Retorna o schedule
-atual do ESP32.
-
-**Headers**: `Authorization: Bearer <token>`
+Schedule exportado para compatibilidade com o formato Django.
+**Nota: este endpoint NÃO requer autenticação** (acesso público).
 
 **Resposta** `200`:
 ```json
@@ -758,6 +880,7 @@ atual do ESP32.
     {
       "id": 1,
       "prescription_id": 1,
+      "user_id": 1,
       "name": "Paracetamol",
       "dose_quantity": "1 comprimido",
       "slot_number": 1,
@@ -807,18 +930,32 @@ Sincronizar eventos registados offline pelo ESP32 (formato compatível com Djang
 
 ---
 
-## Endpoints — Schedule do Dispensador (Legado)
+## Endpoints — Schedule do Dispensador (Legado/Interno)
 
 ### `GET /api/schedule`
 
-Retorna o schedule atualmente guardado no LittleFS. Usado internamente pelo
+Retorna o schedule atualmente guardado na tabela SQLite. Usado internamente pelo
 dispensador e para debug.
 
 **Resposta** `200`:
 ```json
 {
   "schema_version": 1,
-  "item": [...]
+  "device_serial": "KUJIKISA-ESP32-001",
+  "items": [
+    {
+      "id": 1,
+      "prescription_id": 1,
+      "user_id": 1,
+      "name": "Paracetamol",
+      "dose_quantity": "1 comprimido",
+      "slot_number": 1,
+      "scheduled_time": "08:00",
+      "start_date": "2026-06-01",
+      "end_date": "2026-06-30",
+      "active": true
+    }
+  ]
 }
 ```
 
@@ -840,7 +977,7 @@ pelas prescrições, mas pode ser usado para override direto.
 
 ### `GET /api/history`
 
-Retorna todos os eventos como array (formato histórico). Equivalente ao events.
+Retorna todos os eventos como array (até 200). Equivalente ao events.
 
 **Resposta** `200`:
 ```json
@@ -866,21 +1003,89 @@ Limpa todos os eventos.
 
 ### `POST /api/dispense`
 
-Acciona manualmente um slot (teste/manutenção).
+Acciona o servo manualmente (teste/manutenção). **Endpoint sem autenticação.**
 
-**Request**:
+Se `slot_number` for fornecido (1-3), executa a dispensação do slot
+(roda ao ângulo do slot, espera 900ms, volta ao home) e regista evento
+com `status = manual`. Caso contrário, roda o servo para um ângulo de
+teste (90° por defeito, ou o ângulo enviado, 0-360°).
+
+O servo usa `writeMicroseconds()` com mapeamento `DEG_TO_PULSE`:
+500µs = 0°, 1500µs = 180°, 2500µs = 360°.
+
+**Request** (com slot):
 ```json
 {
   "slot_number": 1
 }
 ```
 
-**Resposta** `200`:
+**Request** (teste — sem slot, apenas rodar o servo):
+```json
+{}
+```
+
+**Request** (teste com ângulo personalizado):
 ```json
 {
-  "detail": "Slot accionado."
+  "angle": 240
 }
 ```
+
+| Campo | Tipo | Obrigatório | Descrição |
+|---|---|---|---|
+| `slot_number` | int | Não | Slot 1..3 (físico) |
+| `angle` | int | Não | Ângulo 0..360° (usado se slot_number não fornecido) |
+
+**Respostas** `200`:
+```json
+// Com slot_number
+{ "detail": "Slot accionado." }
+
+// Sem parâmetros
+{ "detail": "Teste: servo rodado para 90 graus." }
+
+// Com angle personalizado
+{ "detail": "Servo rodado para angulo informado." }
+```
+
+---
+
+## Lógica de Dispensação
+
+O ESP32 corre um ciclo contínuo que:
+
+1. **`checkSchedule()`** — A cada minuto, verifica se algum item do schedule
+   corresponde ao horário actual. Se sim:
+   - Roda o servo para o ângulo do slot (`SLOT_ANGLES[slot-1]`)
+   - Aguarda `DISPENSE_HOLD_MS` (900ms)
+   - Retorna ao `HOME_ANGLE` (0°)
+   - Toca 3 beeps
+   - **Cria imediatamente** evento com `status = dispensed`
+   - Inicia janela de confirmação de 5 minutos
+
+2. **`checkConfirmation()`** — Se há uma janela de confirmação activa:
+   - **Botão físico** (`CONFIRM_BUTTON_PIN`, GPIO 33, INPUT_PULLUP):
+     - `activeEventId` actualizado para `taken` via `DB.eventSetTaken()`
+     - 1 beep de confirmação
+   - **Confirmação do app** (`POST /api/medications/take/` ou `/confirm/`):
+     - Evento marcado como `confirmed_app`
+     - **Servo faz gesto de confirmação** (roda ao ângulo do slot e volta)
+   - **Timeout** (5 min sem confirmação):
+     - Evento actualizado para `missed` via `DB.eventSetMissed()`
+     - 2 beeps de aviso
+
+3. **Gestão de Tempo**:
+   - Tenta NTP (`pool.ntp.org`, `time.nist.gov`) no boot
+   - Se NTP falhar: restaura tempo persistido em NVS (`Preferences`)
+   - Re-tenta NTP a cada 30s enquanto WiFi estiver ligado e NTP não sincronizado
+   - Após NTP sincronizado: persiste o tempo a cada 5 min
+   - Timezone: `WAT-1` (West Africa Time)
+   - Fallback manual: `POST /api/time` (também persiste em NVS)
+
+4. **LED**:
+   - Ligado fixo: WiFi station conectado
+   - Piscando (500ms): Apenas modo AP
 
 ---
 
@@ -943,7 +1148,7 @@ POST /api/change-password/  → alterar password
 | 400 | Payload inválido ou campo obrigatório ausente |
 | 401 | Token ausente, inválido ou expirado |
 | 404 | Endpoint ou recurso não encontrado |
-| 502 | Backend inacessível |
+| 500 | Erro interno (ex: SQLite) |
 
 Resposta padrão de erro:
 ```json
@@ -990,6 +1195,7 @@ curl -X POST $BASE/api/medications/prescriptions/ \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
+    "name": "Antibiotico Junho",
     "start_date": "2026-06-05",
     "items": [
       {"name":"Paracetamol","dose_quantity":"1 comprimido","scheduled_time":"08:00","slot_number":1},
@@ -1002,6 +1208,12 @@ curl -H "Authorization: Bearer $TOKEN" $BASE/api/medications/prescriptions/
 
 # Ver eventos
 curl -H "Authorization: Bearer $TOKEN" $BASE/api/medications/events/
+
+# Confirmar toma por slot
+curl -X POST $BASE/api/medications/take/ \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"slot_number":1}'
 
 # Dispensar manualmente (teste)
 curl -X POST $BASE/api/dispense \
@@ -1084,14 +1296,26 @@ async function syncTime() {
     body: JSON.stringify({ epoch: Math.floor(Date.now() / 1000) }),
   });
 }
+
+// Confirmar toma por slot
+async function confirmTake(token, slotNumber) {
+  return esp32Fetch("/api/medications/take/", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ slot_number: slotNumber }),
+  });
+}
 ```
+
+Agora, tens como adicionar uma cena, para sempre que toca a hora de um medicamento, ele toca um especie de alarme, pontualmente e em tempo real, ele toca uma especie de alarme-
 
 ---
 
 ## Notas de Segurança (Protótipo)
 
-- As passwords são armazenadas com hash SHA256
+- As passwords são armazenadas com hash SHA256 (não bcrypt)
 - Os tokens são aleatórios (32 caracteres hex)
 - O AP tem password fixa (`kujikisa123`)
 - O endpoint `/api/dispense` não tem auth (apenas para teste)
-- Para produção: password AP única por serial, rate limiting, HTTPS
+- O endpoint `/api/devices/{id}/local-schedule/` não tem auth (acesso público)
+- Para produção: password AP única por serial, rate limiting, HTTPS, bcrypt nas passwords

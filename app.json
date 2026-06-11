@@ -40,8 +40,18 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "sounds": ["./assets/sounds/alarm.wav"]
+        }
+      ]
     ],
+    "notification": {
+      "icon": "./assets/images/icon.png",
+      "sound": "./assets/sounds/alarm.wav"
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

@@ -10,6 +10,7 @@ export interface Prescription {
   id: number;
   user_id: number;
   device_id: number;
+  name?: string;
   start_date: string;
   end_date?: string;
   is_active: boolean;
@@ -18,6 +19,7 @@ export interface Prescription {
 }
 
 export interface CreatePrescriptionRequest {
+  name?: string;
   start_date: string;
   end_date?: string;
   is_active?: boolean;

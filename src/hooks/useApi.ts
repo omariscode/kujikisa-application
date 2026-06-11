@@ -126,6 +126,17 @@ export function useLocalSchedule(deviceId: number) {
   });
 }
 
+export function useManualDispense() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slotNumber: number) =>
+      devicesService.manualDispense(slotNumber),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: eventKeys.all });
+    },
+  });
+}
+
 export function usePairDevice() {
   const queryClient = useQueryClient();
   return useMutation({
