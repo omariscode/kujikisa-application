@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "kujikisa",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
     },
@@ -18,9 +17,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.kujikisa"
+      "package": "com.omarscode.kujikisa"
     },
     "web": {
       "output": "static",
@@ -44,17 +42,21 @@
       [
         "expo-notifications",
         {
-          "sounds": ["./assets/sounds/alarm.wav"]
+          "sounds": [
+            "./assets/sounds/alarm.wav"
+          ]
         }
       ]
     ],
-    "notification": {
-      "icon": "./assets/images/icon.png",
-      "sound": "./assets/sounds/alarm.wav"
-    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "43e6d2bd-bc7f-46aa-93ea-68258fff3574"
+      }
     }
   }
 }
