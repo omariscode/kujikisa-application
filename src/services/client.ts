@@ -1,8 +1,8 @@
 import type { ApiError } from "@/src/types";
-import { getDeviceUrl, getToken, setDeviceUrl } from "./storage";
+import { getToken } from "./storage";
 
 const TIMEOUT_MS = 6000;
-const DISCOVERY_TIMEOUT_MS = 3000;
+const BASE_URL = "http://192.168.4.1";
 
 class ApiClientError extends Error {
   status: number;
@@ -15,38 +15,8 @@ class ApiClientError extends Error {
   }
 }
 
-async function discoverDevice(): Promise<string> {
-  const candidates = ["http://kujikisa.local", "http://192.168.4.1", "http://192.168.1.100","http://192.168.0.195"];
-
-  for (const base of candidates) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT_MS);
-
-      const res = await fetch(`${base}/api/health`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data?.ok) {
-          await setDeviceUrl(base);
-          return base;
-        }
-      }
-    } catch {}
-  }
-
-  throw new ApiClientError(502, "Dispensador não encontrado.");
-}
-
 async function getBaseUrl(): Promise<string> {
-  const stored = await getDeviceUrl();
-  if (stored) return stored;
-
-  const discovered = await discoverDevice();
-  return discovered;
+  return BASE_URL;
 }
 
 export async function apiFetch<T>(
